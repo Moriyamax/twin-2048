@@ -1,5 +1,7 @@
 # Twin-2048: Human vs AI
 
+[ゲーム開始](https://Moriyamax.github.io/twin-2048/Twin2048gameVS_CPU.html)
+
 2枚の盤面を同時に操作する2048派生ゲームです。
 プレイヤーとCPUが交互に操作し、先に盤面を詰まらせた方が負けです。
 

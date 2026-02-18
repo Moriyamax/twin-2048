@@ -1,5 +1,7 @@
 # Twin-2048: Human vs AI
 
+[Play Online](https://Moriyamax.github.io/twin-2048/Twin2048gameVS_CPU.html)
+
 A 2048 variant where you control two boards simultaneously against a CPU opponent. Players alternate turns — whoever traps a board first loses.
 
 ## Demo
@@ -60,3 +62,5 @@ Twin2048gameVS_CPU.html   // Entire game in a single file
 ## License
 
 MIT
+
+##
