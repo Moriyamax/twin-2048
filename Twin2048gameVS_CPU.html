@@ -443,6 +443,7 @@
         document.getElementById("winLossMessage").textContent = isPlayerTurn ? "AI WINS!" : "YOU WIN!";
         document.getElementById("reasonMessage").textContent = isPlayerTurn ? "You triggered a Game Over." : "The AI triggered a Game Over.";
         document.getElementById("gameOver").classList.remove("hidden");
+        isProcessing = false;  // 追加  20260218      
         return;
       }
 
@@ -463,8 +464,13 @@
       if (!isPlayerTurn) {
         const emptyTotal = game1.state.getEmptyCells().length + game2.state.getEmptyCells().length;
         setTimeout(() => {
-          const move = gameAI.nextMove(Math.random() > 0.5 ? game1.state : game2.state, emptyTotal);
-          executeStep(move);
+          //20260218盤面の空きが少ない方を優先
+          //const move = gameAI.nextMove(Math.random() > 0.5 ? game1.state : game2.state, emptyTotal);
+          const dangerState = game1.state.getEmptyCells().length <= game2.state.getEmptyCells().length
+          ? game1.state
+          : game2.state;
+          const move = gameAI.nextMove(dangerState, emptyTotal);
+executeStep(move);
         }, earnedBonus ? 900 : 600);
       }
     }
