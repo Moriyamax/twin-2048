@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Twin-2048 Game</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background-color: #faf8ef;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      align-items: center;
+    }
+    .game-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .game-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #776e65;
+    }
+    .gameBoard {
+      position: relative;
+      background-color: #bbada0;
+      border-radius: 6px;
+      padding: 3px;
+    }
+    .gameCell {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      border-radius: 3px;
+      transition: none;
+    }
+    .controls {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background-color: #8f7a66;
+      color: #f9f6f2;
+    }
+    button:hover {
+      background-color: #9f8a76;
+    }
+    .game-over {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(238, 228, 218, 0.95);
+      padding: 40px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 1000;
+      box-shadow: 0 0 30px rgba(0,0,0,0.3);
+    }
+    .game-over h2 {
+      margin: 0 0 20px 0;
+      color: #776e65;
+      font-size: 32px;
+    }
+    .hidden {
+      display: none;
+    }
+    .instructions {
+      margin-bottom: 20px;
+      text-align: center;
+      color: #776e65;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="instructions">
+    Use Arrow Keys to Play | Continues until both games are over
+  </div>
+  <div class="controls">
+    <button id="autoButton">AUTO</button>
+    <button id="resetButton">Reset</button>
+  </div>
+  <div class="container">
+    <div class="game-wrapper">
+      <div class="game-title">Game 1</div>
+      <div id="gameBoard1" class="gameBoard"></div>
+    </div>
+    <div class="game-wrapper">
+      <div class="game-title">Game 2</div>
+      <div id="gameBoard2" class="gameBoard"></div>
+    </div>
+  </div>
+  <div id="gameOver" class="game-over hidden">
+    <h2>Game Over!</h2>
+    <button id="restartButton">Play Again</button>
+  </div>
+
+  <script>
+    let global = {
+      keys: []
+    };
+
+    function calcSettings() {
+      const margin = 3;
+      const boardSize = Math.floor(Math.min(window.innerWidth, window.innerHeight / 2.6) * 0.88);
+      const cellSize = Math.floor((boardSize - margin * 5) / 4);
+      return {
+        CELL_WIDTH: cellSize,
+        CELL_HEIGHT: cellSize,
+        CELL_MARGIN: margin,
+        ANIMATION_SWELLING: Math.max(4, Math.floor(cellSize * 0.12)),
+        ANIMATION_GEN_TIME: 100,
+        FONT_SIZE: Math.floor(cellSize * 0.38),
+        BOARD_SIZE: boardSize
+      };
+    }
+    let Settings = calcSettings();
+
+    class State {
+      constructor() {
+        this.board = [];
+        this.merge = [];
+        this.moveCells = [];
+        this.move = -1;
+        for (let i = 0; i < 16; i++) {
+          this.board.push(0);
+          this.merge.push(false);
+        }
+      }
+      
+      calcNextState(dir) {
+        let nextState = new State();
+        for (let i = 0; i < 16; i++) {
+          nextState.board[i] = this.board[i];
+        }
+        if (dir == 0) {
+          nextState._moveUp();
+        } else if (dir == 1) {
+          nextState._rotate(3);
+          nextState._moveUp();
+          nextState._rotate(1);
+        } else if (dir == 2) {
+          nextState._rotate(2);
+          nextState._moveUp();
+          nextState._rotate(2);
+        } else {
+          nextState._rotate(1);
+          nextState._moveUp();
+          nextState._rotate(3);
+        }
+        this.move = -1;
+        if (nextState.moveCells.length > 0) {
+          this.move = dir;
+        }
+        return nextState;
+      }
+      
+      isDie() {
+        for (let i = 0; i < 4; i++) {
+          for (let j = 0; j < 4; j++) {
+            if (this.board[i*4+j] === 0) {
+              return false;
+            }
+            const dx = [1, 0];
+            const dy = [0, 1];
+            for (let k = 0; k < 2; ++k) {
+              let ni = i + dy[k], nj = j + dx[k];
+              if (ni >= 4 || nj >= 4) {
+                continue;
+              }
+              if (this.board[i*4+j] === this.board[ni*4+nj]) {
+                return false;
+              }
+            }
+          }
+        }
+        return true;
+      }
+      
+      getEmptyCells() {
+        let result = [];
+        for (let i = 0; i < 16; i++) {
+          if (this.board[i] == 0) {
+            result.push(i);
+          }
+        }
+        return result;
+      }
+      
+      rewriteCells(y, x, value) {
+        this.board[y*4 + x] = value;
+      }
+      
+      _rotate(rot) {
+        for (let i = 0; i < rot; ++i) {
+          let nextBoard = [];
+          let nextMerge = [];
+          for (let j = 0; j < 16; ++j) {
+            let y = Math.floor(j/4), x = j - 4*y;
+            let ny = x, nx = 3-y;
+            nextBoard[ny*4+nx] = this.board[j];
+            nextMerge[ny*4+nx] = this.merge[j];
+          }
+          this.board = nextBoard;
+          this.merge = nextMerge;
+          let nextMoveCells = [];
+          for (let i = 0; i < this.moveCells.length; ++i) {
+            const moveCell = this.moveCells[i];
+            let fx = moveCell.fx, fy = moveCell.fy, tx = moveCell.tx, ty = moveCell.ty;
+            nextMoveCells.push({fx: 3-fy, fy: fx, tx: 3-ty, ty: tx});
+          }
+          this.moveCells = nextMoveCells;
+        }
+      }
+      
+      _moveUp() {
+        for (let y = 0; y < 4; y++) {
+          for (let x = 0; x < 4; x++) {
+            this.merge[y*4+x] = false;
+          }
+        }
+        for (let y = 1; y < 4; y++) {
+          for (let x = 0; x < 4; ++x) {
+            if (this.board[y*4+x] === 0) continue;
+            let cy = y;
+            while (cy >= 1) {
+              const num = this.board[(cy-1)*4+x];
+              if (num === 0) {
+                this.board[(cy-1)*4+x] = this.board[cy*4+x];
+                this.board[cy*4+x] = 0;
+                --cy;
+              } else if (num === this.board[cy*4+x] && !this.merge[cy*4+x] && !this.merge[(cy-1)*4+x]) {
+                this.board[(cy-1)*4+x] = 2*num;
+                this.board[cy*4+x] = 0;
+                this.merge[(cy-1)*4+x] = true;
+                --cy;
+              } else {
+                break;
+              }
+            }
+            if (cy != y) {
+              this.moveCells.push({fx: x, fy: y, tx: x, ty: cy});
+            }
+          }
+        }
+      }
+    }
+
+    class Game {
+      constructor(screenId) {
+        this.screen = document.getElementById(screenId);
+        this.screen.style.width = Settings.BOARD_SIZE + "px";
+        this.screen.style.height = Settings.BOARD_SIZE + "px";
+        this.animation = new Animation(this.screen);
+        this.state = new State();
+        for (let i = 0; i < 2; i++) {
+          const empty = this.state.getEmptyCells();
+          const num = (Math.random() < 0.9 ? 2 : 4);
+          const index = empty[Math.floor(Math.random() * empty.length)];
+          const y = Math.floor(index/4), x = index%4;
+          this.state.rewriteCells(y, x, num);
+          this.animation.generate(this.screen, y, x, num, 1);
+        }
+      }
+      
+      move(dir) {
+        if (this.state.isDie()) return false;
+        if (!this.animation.finish) return false;
+        let nextState = this.state.calcNextState(dir);
+        if (nextState.moveCells.length > 0) {
+          const empty = nextState.getEmptyCells();
+          const num = (Math.random() < 0.9 ? 2 : 4);
+          const index = empty[Math.floor(Math.random() * empty.length)];
+          const y = Math.floor(index/4), x = index%4;
+          nextState.rewriteCells(y, x, num);
+          this.animation.update(nextState, y, x, num);
+          this.state = nextState;
+          return true;
+        }
+        return false;
+      }
+    }
+
+    class Animation {
+      constructor(screen) {
+        this.bottomCells = [];
+        this.cells = [];
+        this.pos = new Map();
+        this.itr = 0;
+        for (let i = 0; i < 16; i++) {
+          const y = Math.floor(i / 4), x = i % 4;
+          const cell = new Cell(0, screen);
+          cell.setPos(y, x);
+          this.bottomCells.push(cell);
+        }
+        this.screen = screen;
+        this.finish = true;
+      }
+      
+      update(state, addY, addX, addNum) {
+        this.finish = false;
+        {
+          let progress = 0;
+          const time = Settings.ANIMATION_GEN_TIME;
+          let start = null;
+          let map = new Map();
+          for (const move of state.moveCells) {
+            let index = -1;
+            this.pos.forEach((value, key, map) => {
+              if (value.x === move.fx && value.y === move.fy) {
+                index = key;
+              }
+            });
+            if (index === -1) {
+              console.error("cell not found!");
+              continue;
+            }
+            map.set(index, move);
+          }
+          map.forEach((value, key, map) => {
+            this.pos.set(key, {x: value.tx, y: value.ty});
+          });
+
+          const proc = (timestamp) => {
+            if (!start) {
+              start = timestamp;
+            }
+            progress = (timestamp - start) / time;
+            progress = Math.min(progress, 1);
+
+            if (progress >= 0) {
+              map.forEach((value, key, map) => {
+                this.cells[key].translate(value.fx, value.fy, value.tx, value.ty, progress);
+              });
+            }
+
+            if (progress < 1) {
+              requestAnimationFrame(proc);
+            }
+          }
+          requestAnimationFrame(proc);
+        }
+        {
+          let deleteIndex = [];
+          let animationIndex = [];
+          for (let y = 0; y < 4; ++y) {
+            for (let x = 0; x < 4; ++x) {
+              if (state.merge[y*4+x]) {
+                let index = [];
+                this.pos.forEach((value, key, map) => {
+                  if (value.x === x && value.y === y) {
+                    index.push(key);
+                  }
+                });
+                deleteIndex.push(index[0]);
+                animationIndex.push(index[1]);
+              }
+            }
+          }
+          const addIndex = this.itr++;
+          this.pos.set(addIndex, {x: addX, y: addY});
+
+          let progress = 0;
+          const time = Settings.ANIMATION_GEN_TIME;
+          let start = null;
+          
+          const proc = () => {
+            if (!start) {
+              start = new Date();
+              this.cells[addIndex] = new Cell(addNum, this.screen);
+            }
+            let timestamp = new Date();
+            progress = (timestamp - start) / time;
+            progress = Math.min(progress, 1);
+
+            if (progress >= 0) {
+              for (let index of animationIndex) {
+                let p = this.pos.get(index);
+                this.cells[index].changeAttrib(state.board[p.y*4+p.x]);
+                this.cells[index].appear(this.pos.get(index).y, this.pos.get(index).x, progress, 2);
+              }
+              this.cells[addIndex].appear(addY, addX, progress, 1);
+            }
+
+            if (progress < 1) {
+              requestAnimationFrame(proc);
+            } else {
+              this.finish = true;
+              for (let index of deleteIndex) {
+                this.screen.removeChild(this.cells[index].elem);
+                this.cells[index] = null;
+                this.pos.delete(index);
+              }
+            }
+          }
+          setTimeout(proc, Settings.ANIMATION_GEN_TIME*1.1);
+        }
+      }
+      
+      generate(screen, y, x, num, type=0) {
+        let index = -1;
+        this.pos.forEach((value, key, map) => {
+          if (value.x === x && value.y === y) {
+            index = key;
+          }
+        });
+        if (index !== -1) {
+          this.cells[index].changeAttrib(num);
+          return;
+        }
+        index = this.itr++;
+        this.cells[index] = new Cell(num, screen);
+        this.pos.set(index, {x: x, y: y});
+        let progress = 0;
+        let start = null;
+        const time = Settings.ANIMATION_GEN_TIME;
+
+        const update = (timestamp) => {
+          if (!start) {
+            start = timestamp;
+          }
+          progress = (timestamp - start) / time;
+          progress = Math.min(progress, 1);
+
+          if (progress >= 0) {
+            this.cells[index].appear(y, x, progress, type);
+          }
+
+          if (progress < 1) {
+            requestAnimationFrame(update);
+          }
+        }
+        requestAnimationFrame(update);
+      }
+    }
+
+    class Cell {
+      constructor(num, screen) {
+        this.elem = this._initElement();
+        screen.appendChild(this.elem);
+        this.changeAttrib(num);
+      }
+      
+      translate(fx, fy, tx, ty, process) {
+        const x = fx + (tx - fx) * process;
+        const y = fy + (ty - fy) * process;
+        const posX = x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN;
+        const posY = y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN;
+        this.elem.style.left = `${posX}px`;
+        this.elem.style.top = `${posY}px`;
+      }
+      
+      setPos(y, x) {
+        this.appear(y, x, 0);
+      }
+      
+      appear(y, x, progress, type=0) {
+        let height = Settings.CELL_HEIGHT;
+        let width = Settings.CELL_WIDTH;
+        let posY = y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN;
+        let posX = x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN;
+        let fontSize = Settings.FONT_SIZE;
+        if (type === 1) {
+          height = Settings.CELL_HEIGHT * progress;
+          width = Settings.CELL_WIDTH * progress;
+          posX = x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN + (Settings.CELL_WIDTH - width) / 2;
+          posY = y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN + (Settings.CELL_HEIGHT - height) / 2;
+          fontSize = Settings.FONT_SIZE * progress;
+        } else if (type === 2) {
+          height = Settings.CELL_HEIGHT + Settings.ANIMATION_SWELLING * Math.sin(Math.PI * progress);
+          width = Settings.CELL_WIDTH + Settings.ANIMATION_SWELLING * Math.sin(Math.PI * progress);
+          posX = x * (Settings.CELL_WIDTH + Settings.CELL_MARGIN) + Settings.CELL_MARGIN + (Settings.CELL_WIDTH - width) / 2;
+          posY = y * (Settings.CELL_HEIGHT + Settings.CELL_MARGIN) + Settings.CELL_MARGIN + (Settings.CELL_HEIGHT - height) / 2;
+          fontSize = Settings.FONT_SIZE * (height / Settings.CELL_HEIGHT);
+        }
+        this.elem.style.left = `${posX}px`;
+        this.elem.style.top = `${posY}px`;
+        this.elem.style.height = `${height}px`;
+        this.elem.style.width = `${width}px`;
+        this.elem.style.fontSize = `${fontSize}px`;
+        this.elem.style.lineHeight = `${height}px`;
+      }
+      
+      changeAttrib(num) {
+        this.elem.textContent = (num > 0 ? num : "");
+        this.num = num;
+        switch (num) {
+          case 0:
+            this.elem.style.backgroundColor = "#ccc";
+            this.elem.style.color = "#000"
+            break;
+          case 2:
+            this.elem.style.backgroundColor = "#eee";
+            this.elem.style.color = "#000"
+            break;
+          case 4:
+            this.elem.style.backgroundColor = "#eec";
+            this.elem.style.color = "#000"
+            break;
+          case 8:
+            this.elem.style.backgroundColor = "#f93";
+            this.elem.style.color = "#fff";
+            break;
+          case 16:
+            this.elem.style.backgroundColor = "#c66";
+            this.elem.style.color = "#fff";
+            break;
+          case 32:
+            this.elem.style.backgroundColor = "#c33";
+            this.elem.style.color = "#fff";
+            break;
+          case 64:
+            this.elem.style.backgroundColor = "#c11";
+            this.elem.style.color = "#fff";
+            break;
+          case 128:
+            this.elem.style.backgroundColor = "#fc6";
+            this.elem.style.color = "#fff";
+            break;
+          case 256:
+            this.elem.style.backgroundColor = "#fc5";
+            this.elem.style.color = "#fff";
+            break;
+          case 512:
+            this.elem.style.backgroundColor = "#fc3";
+            this.elem.style.color = "#fff";
+            break;
+          case 1024:
+            this.elem.style.backgroundColor = "#fc1";
+            this.elem.style.color = "#fff";
+            break;
+          case 2048:
+            this.elem.style.backgroundColor = "#fc0";
+            this.elem.style.color = "#fff";
+            break;
+          default:
+            this.elem.style.backgroundColor = "#222";
+            this.elem.style.color = "#fff";
+            break;
+        }
+      }
+      
+      _initElement() {
+        const result = document.createElement("div");
+        result.classList.add("gameCell");
+        return result;
+      }
+    }
+
+    class GameAI {
+      nextMove(state) {
+        const maxDepth = 50;
+        const iterateCount = 10000;
+        let aliveCount = [0, 0, 0, 0];
+        let triedCount = [0, 0, 0, 0];
+        let canMove = [];
+        for (let dir = 0; dir < 4; ++dir) {
+          let nextState = state.calcNextState(dir);
+          if (nextState.moveCells.length > 0) {
+            canMove.push(dir);
+          }
+        }
+        if (canMove.length === 0) return 0;
+        if (canMove.length === 1) {
+          return canMove[0];
+        } else {
+          for (let itr = 0; itr < iterateCount; ++itr) {
+            const dir = canMove[Math.floor(Math.random() * canMove.length)];
+            let nextState = state.calcNextState(dir);
+            triedCount[dir]++;
+            aliveCount[dir] += this._dfs(nextState, 1, maxDepth);
+          }
+        }
+        let ans = -1;
+        let maxE = -1;
+        for (let i = 0; i < 4; i++) {
+          if (triedCount[i] === 0) continue;
+          const e = aliveCount[i] / triedCount[i];
+          if (maxE < e) {
+            maxE = e;
+            ans = i;
+          }
+        }
+        console.log(maxE);
+        return ans;
+      }
+      
+      _dfs(state, depth, maxDepth) {
+        if (depth == maxDepth) {
+          return 1;
+        }
+        const emptyCells = state.getEmptyCells();
+        if (emptyCells.length > 0) {
+          const index = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+          const y = Math.floor(index/4), x = index % 4;
+          const num = (Math.random() < 0.9 ? 2 : 4);
+          state.rewriteCells(y, x, num);
+        }
+        if (state.isDie()) return 0;
+        const dir = Math.floor(Math.random() * 4);
+        state = state.calcNextState(dir);
+        return this._dfs(state, depth+1, maxDepth);
+      }
+    }
+
+    // Dual Game Management
+    let game1 = new Game("gameBoard1");
+    let game2 = new Game("gameBoard2");
+    let isAutoPlaying = false;
+
+    function checkGameOver() {
+      if (game1.state.isDie() && game2.state.isDie()) {
+        document.getElementById("gameOver").classList.remove("hidden");
+        isAutoPlaying = false;
+        document.getElementById("autoButton").textContent = "AUTO";
+      }
+    }
+
+    function resetGames() {
+      document.getElementById("gameBoard1").innerHTML = "";
+      document.getElementById("gameBoard2").innerHTML = "";
+      game1 = new Game("gameBoard1");
+      game2 = new Game("gameBoard2");
+      document.getElementById("gameOver").classList.add("hidden");
+      isAutoPlaying = false;
+      document.getElementById("autoButton").textContent = "AUTO";
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (global.keys[e.keyCode]) return;
+      global.keys[e.keyCode] = true;
+      
+      let dir = -1;
+      if (global.keys[38]) { // up
+        dir = 0;
+      } else if (global.keys[39]) { // right
+        dir = 1;
+      } else if (global.keys[40]) { // down
+        dir = 2;
+      } else if (global.keys[37]) { // left
+        dir = 3;
+      } else {
+        return;
+      }
+      
+      game1.move(dir);
+      game2.move(dir);
+      setTimeout(checkGameOver, 200);
+    });
+
+    document.addEventListener("keyup", (e) => {
+      global.keys[e.keyCode] = false;
+    });
+
+    document.getElementById("autoButton").addEventListener("click", (e) => {
+      const elem = document.getElementById("autoButton");
+      if (elem.textContent === "AUTO") {
+        elem.textContent = "STOP";
+        isAutoPlaying = true;
+        const ai1 = new GameAI();
+        const ai2 = new GameAI();
+        
+        const update = () => {
+          if (!isAutoPlaying) return;
+          const dir1 = ai1.nextMove(game1.state);
+          const dir2 = ai2.nextMove(game2.state);
+          const dir = Math.random() < 0.5 ? dir1 : dir2;
+          game1.move(dir);
+          game2.move(dir);
+          checkGameOver();
+          if (isAutoPlaying) setTimeout(update, 300);
+        };
+        setTimeout(update, 100);
+      } else {
+        elem.textContent = "AUTO";
+        isAutoPlaying = false;
+      }
+    });
+
+    document.getElementById("resetButton").addEventListener("click", resetGames);
+    document.getElementById("restartButton").addEventListener("click", resetGames);
+
+    // Touch/Swipe support
+    let touchStartX = 0;
+    let touchStartY = 0;
+    document.addEventListener("touchstart", (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener("touchend", (e) => {
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      let dir = -1;
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        dir = dx > 0 ? 1 : 3; // right : left
+      } else {
+        dir = dy > 0 ? 2 : 0; // down : up
+      }
+      game1.move(dir);
+      game2.move(dir);
+      setTimeout(checkGameOver, 200);
+    }, { passive: true });
+  </script>
+</body>
+</html>
